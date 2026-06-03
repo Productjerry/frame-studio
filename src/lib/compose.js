@@ -41,6 +41,14 @@ export async function composeFramedDP({ photo, frameUrl, x = 0, y = 0, scale = 1
   canvas.height = SIZE;
   const ctx = canvas.getContext("2d");
 
+  // Apply rotation about the canvas center (mirrors the CSS rotate on the
+  // preview, which spins the whole framed disc). 90° steps stay corner-clean.
+  if (rotation) {
+    ctx.translate(SIZE / 2, SIZE / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.translate(-SIZE / 2, -SIZE / 2);
+  }
+
   // 1. gradient background (matches the on-screen blue gradient)
   const g = ctx.createLinearGradient(0, 0, SIZE, SIZE);
   g.addColorStop(0, "#8aa4c8");
@@ -62,10 +70,11 @@ export async function composeFramedDP({ photo, frameUrl, x = 0, y = 0, scale = 1
   const cy = SIZE / 2;
   const r = circleD / 2;
 
-  // white ring behind the photo (on-screen border is 8px on a 360 box)
+  // white ring behind the photo — preview uses an 8px border on the circle,
+  // which is ~3% of the circle diameter; mirror that here.
   ctx.save();
   ctx.beginPath();
-  ctx.arc(cx, cy, r + SIZE * 0.022, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r + circleD * 0.03, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.fill();
   ctx.restore();
@@ -77,14 +86,21 @@ export async function composeFramedDP({ photo, frameUrl, x = 0, y = 0, scale = 1
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // cover-fit the photo into the circle, then apply user's x/y/scale offsets.
-    // On-screen offsets are in px relative to a ~300-420 box; normalise to output.
-    const norm = SIZE / 360;
-    const baseScale = Math.max(circleD / img.width, circleD / img.height) * scale;
-    const drawW = img.width * baseScale;
-    const drawH = img.height * baseScale;
-    const dx = cx - drawW / 2 + x * norm;
-    const dy = cy - drawH / 2 + y * norm;
+    // Mirror the preview EXACTLY:
+    //  - object-fit: cover into the circle's bounding box (circleD square)
+    //  - translate by x/y as a FRACTION of the circle box
+    //  - scale about the center
+    const cover = Math.max(circleD / img.width, circleD / img.height);
+    const baseW = img.width * cover;
+    const baseH = img.height * cover;
+    // scale about center
+    const drawW = baseW * scale;
+    const drawH = baseH * scale;
+    // center of the circle box, plus fractional offset (x,y are fractions of circleD)
+    const centerX = cx + (x || 0) * circleD;
+    const centerY = cy + (y || 0) * circleD;
+    const dx = centerX - drawW / 2;
+    const dy = centerY - drawH / 2;
     ctx.drawImage(img, dx, dy, drawW, drawH);
     ctx.restore();
   }

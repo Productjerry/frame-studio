@@ -26,6 +26,19 @@ export function Avatar({ src, name, size = 34, ring }) {
 }
 
 export function LogoMark({ size = 36 }) {
+  const [ok, setOk] = React.useState(true);
+  // Drop your logo at public/logo.png (or .svg and change the src below).
+  // If the file is missing or fails to load, we fall back to the lettermark.
+  if (ok) {
+    return (
+      <img
+        src="/logo.png"
+        alt="Logo"
+        onError={() => setOk(false)}
+        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0, background: "#fff", display: "block" }}
+      />
+    );
+  }
   return (
     <div style={{
       width: size, height: size, borderRadius: "50%", flexShrink: 0,
@@ -99,6 +112,11 @@ export function AnalyticsChart() {
 }
 
 export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 }) {
+  // x and y are FRACTIONS of the circle diameter (e.g. 0.05 = shift 5% right).
+  // Expressing the offset in % of the photo's own box keeps it identical
+  // whether this renders at 300px, 420px, or 1080px (the download canvas).
+  const offX = (x || 0) * 100; // % of circle box width
+  const offY = (y || 0) * 100;
   return (
     <div style={{
       position: "relative", width: size, height: size, borderRadius: round ? 24 : 16,
@@ -113,7 +131,7 @@ export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 })
         {photo ? (
           <img src={photo} alt="" style={{
             position: "absolute", top: "50%", left: "50%", minWidth: "100%", minHeight: "100%",
-            transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) scale(${scale})`,
+            transform: `translate(calc(-50% + ${offX}%), calc(-50% + ${offY}%)) scale(${scale})`,
             transformOrigin: "center", objectFit: "cover",
           }} />
         ) : (
@@ -141,14 +159,40 @@ export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 })
   );
 }
 
-export function Slider({ label, value, min, max, onChange }) {
+export function Slider({ label, value, min, max, step = 1, onChange }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
       <span style={{ fontSize: 14, fontWeight: 700, color: "#475569", width: 14 }}>{label}</span>
-      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(+e.target.value)}
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)}
         style={{ flex: 1, height: 6, borderRadius: 4, appearance: "none", cursor: "pointer",
           background: `linear-gradient(90deg, ${BLUE} ${pct}%, #e2e8f0 ${pct}%)` }} />
+    </div>
+  );
+}
+
+// Zoom control: minus button, slider, plus button. value is a scale multiplier.
+export function ZoomControl({ value, min = 1, max = 3, onChange }) {
+  const clamp = (v) => Math.min(max, Math.max(min, +v.toFixed(2)));
+  const pct = ((value - min) / (max - min)) * 100;
+  const btn = {
+    width: 34, height: 34, borderRadius: 9, border: `1px solid ${LINE}`, background: "#fff",
+    cursor: "pointer", fontSize: 20, fontWeight: 700, color: "#475569", lineHeight: 1,
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+  };
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Zoom</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: BLUE }}>{Math.round(value * 100)}%</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button style={btn} onClick={() => onChange(clamp(value - 0.1))}>−</button>
+        <input type="range" min={min} max={max} step={0.01} value={value} onChange={(e) => onChange(+e.target.value)}
+          style={{ flex: 1, height: 6, borderRadius: 4, appearance: "none", cursor: "pointer",
+            background: `linear-gradient(90deg, ${BLUE} ${pct}%, #e2e8f0 ${pct}%)` }} />
+        <button style={btn} onClick={() => onChange(clamp(value + 0.1))}>+</button>
+      </div>
     </div>
   );
 }

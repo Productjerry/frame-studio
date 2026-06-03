@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   BLUE, INK, SLATE, LINE, BG, FONT_BODY,
-  Avatar, LogoMark, FrameCanvas, Slider,
+  Avatar, LogoMark, FrameCanvas, Slider, ZoomControl,
 } from "../components/ui.jsx";
 import { fetchPublishedTemplates, subscribeTemplates } from "../lib/templates.js";
 import { downloadFramedDP } from "../lib/compose.js";
@@ -68,19 +68,19 @@ function MobileTool({ icon: Icon, label, onClick }) {
 
 function UserDesktop({ activeFrame }) {
   const [photo, setPhoto] = useState(null);
-  const [x, setX] = useState(10);
-  const [y, setY] = useState(-6);
+  const [x, setX] = useState(0);      // fraction of circle diameter
+  const [y, setY] = useState(0);
   const [scale, setScale] = useState(1);
+  const [rot, setRot] = useState(0);
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setPhoto(r.result); setX(0); setY(0); setScale(1); }; r.readAsDataURL(f); }
   async function handleDownload() {
     if (!photo) return;
     setBusy(true);
-    try { await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale }); }
+    try { await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, rotation: rot }); }
     finally { setBusy(false); }
   }
-  const [rot, setRot] = useState(0);
-  const fileRef = useRef(null);
-  function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setPhoto(r.result); r.readAsDataURL(f); }
 
   return (
     <div style={{ height: "100%", overflow: "auto", background: BG, fontFamily: FONT_BODY }}>
@@ -114,12 +114,13 @@ function UserDesktop({ activeFrame }) {
 
           <div style={{ background: "#fff", borderRadius: 18, border: `1px solid ${LINE}`, padding: 24 }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "1px", color: SLATE, marginBottom: 18 }}>POSITIONING</div>
-            <Slider label="X" value={x} min={-80} max={80} onChange={setX} />
-            <Slider label="Y" value={y} min={-80} max={80} onChange={setY} />
+            <Slider label="X" value={x} min={-0.4} max={0.4} step={0.005} onChange={setX} />
+            <Slider label="Y" value={y} min={-0.4} max={0.4} step={0.005} onChange={setY} />
+            <ZoomControl value={scale} min={1} max={3} onChange={setScale} />
             <div style={{ display: "flex", gap: 12, marginTop: 22 }}>
               <ToolBtn icon={RotateCw} label="Rotate" onClick={() => setRot((r) => r + 90)} />
-              <ToolBtn icon={ZoomIn} label="Scale" onClick={() => setScale((s) => (s >= 1.6 ? 1 : s + 0.15))} />
-              <ToolBtn icon={Wand2} label="Auto" onClick={() => { setX(10); setY(-6); setScale(1); }} />
+              <ToolBtn icon={ZoomIn} label="Zoom In" onClick={() => setScale((s) => Math.min(3, +(s + 0.2).toFixed(2)))} />
+              <ToolBtn icon={Wand2} label="Reset" onClick={() => { setX(0); setY(0); setScale(1); setRot(0); }} />
             </div>
           </div>
 
@@ -171,12 +172,12 @@ function UserDesktop({ activeFrame }) {
 
 function UserMobile({ activeFrame }) {
   const [photo, setPhoto] = useState(null);
-  const [x, setX] = useState(8);
-  const [y, setY] = useState(-4);
+  const [x, setX] = useState(0);
+  const [y, setY] = useState(0);
   const [scale, setScale] = useState(1);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
-  function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setPhoto(r.result); r.readAsDataURL(f); }
+  function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setPhoto(r.result); setX(0); setY(0); setScale(1); }; r.readAsDataURL(f); }
   async function handleDownload() {
     if (!photo) return;
     setBusy(true);
@@ -213,13 +214,13 @@ function UserMobile({ activeFrame }) {
               <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={300} />
             </div>
             <div style={{ marginTop: 18, padding: "0 4px" }}>
-              <Slider label="X" value={x} min={-80} max={80} onChange={setX} />
-              <Slider label="Y" value={y} min={-80} max={80} onChange={setY} />
+              <Slider label="X" value={x} min={-0.4} max={0.4} step={0.005} onChange={setX} />
+              <Slider label="Y" value={y} min={-0.4} max={0.4} step={0.005} onChange={setY} />
+              <ZoomControl value={scale} min={1} max={3} onChange={setScale} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-around", marginTop: 12 }}>
-              <MobileTool icon={RotateCw} label="Rotate" />
-              <MobileTool icon={ZoomIn} label="Scale" onClick={() => setScale((s) => (s >= 1.6 ? 1 : s + 0.15))} />
-              <MobileTool icon={Wand2} label="Auto" onClick={() => { setX(8); setY(-4); setScale(1); }} />
+            <div style={{ display: "flex", justifyContent: "space-around", marginTop: 16 }}>
+              <MobileTool icon={ZoomIn} label="Zoom In" onClick={() => setScale((s) => Math.min(3, +(s + 0.2).toFixed(2)))} />
+              <MobileTool icon={Wand2} label="Reset" onClick={() => { setX(0); setY(0); setScale(1); }} />
             </div>
           </div>
 

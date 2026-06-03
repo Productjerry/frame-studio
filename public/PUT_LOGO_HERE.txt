@@ -1,0 +1,15 @@
+Put your logo here.
+
+1. Save your logo image in this folder named exactly:  logo.png
+   (A square image works best — e.g. 256×256 or larger. PNG with a
+   transparent or white background looks cleanest in the round badge.)
+
+2. Commit / upload it to GitHub the same way you uploaded the project.
+   Vercel redeploys automatically and your logo replaces the "Rc" mark
+   everywhere (admin sidebar, user header, login screen).
+
+If logo.png is missing, the app shows a simple "Rc" lettermark instead,
+so nothing breaks.
+
+Prefer an SVG or a different filename? Open src/components/ui.jsx, find
+LogoMark, and change the src="/logo.png" line to match.
