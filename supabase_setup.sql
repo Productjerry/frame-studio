@@ -60,3 +60,41 @@ create policy "authed upload frames"
   on storage.objects for insert
   to authenticated
   with check (bucket_id = 'frames');
+
+-- ============================================================
+--  Generated DPs gallery (added later)
+--  Stores DPs that users explicitly chose to share publicly.
+-- ============================================================
+
+create table if not exists public.generations (
+  id         uuid primary key default gen_random_uuid(),
+  image_url  text not null,
+  created_at timestamptz default now()
+);
+
+alter table public.generations enable row level security;
+
+-- Anyone can read (it's a public gallery) and anyone can add their own DP
+-- (regular attendees aren't logged in). Deletes are not public.
+create policy "public read generations"
+  on public.generations for select
+  using (true);
+
+create policy "public insert generations"
+  on public.generations for insert
+  with check (true);
+
+alter publication supabase_realtime add table public.generations;
+
+-- Storage bucket for the shared DP images (public, like frames):
+insert into storage.buckets (id, name, public)
+values ('dps', 'dps', true)
+on conflict (id) do nothing;
+
+create policy "public read dps"
+  on storage.objects for select
+  using (bucket_id = 'dps');
+
+create policy "public upload dps"
+  on storage.objects for insert
+  with check (bucket_id = 'dps');

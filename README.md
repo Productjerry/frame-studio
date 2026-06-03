@@ -123,6 +123,27 @@ Edit a file directly on GitHub (pencil icon) and commit, OR upload new files the
 same way as part B. Vercel rebuilds and redeploys automatically within a minute.
 To add another admin, repeat Supabase step A4 with a new email/password.
 
+### IMPORTANT — one-time database update for the DP gallery
+
+This version adds a public "Recent Frames" gallery of DPs that users choose to
+share. For it to work you must run the database setup script ONE more time so the
+new pieces get created (a `generations` table and a `dps` storage bucket):
+
+1. Supabase dashboard → SQL Editor → New query.
+2. Paste ALL of `supabase_setup.sql` again and Run.
+   (It's safe to re-run — existing tables/policies are skipped, only the new
+   gallery pieces are added. If it complains a policy "already exists", that's
+   harmless — it means that part was already there.)
+3. Confirm under Storage that a public bucket named `dps` now exists.
+
+Until you do this, downloads still work but the share-to-gallery step will
+silently do nothing.
+
+How the gallery works: after a user taps Download, a small popup asks whether to
+add their DP to the public gallery. Only if they tap "Yes, share it" is the image
+saved. No name is attached. The row shows placeholder avatars until the first real
+shared DP exists, then shows real DPs newest-first, updating live.
+
 ---
 
 ## What's real vs. placeholder
