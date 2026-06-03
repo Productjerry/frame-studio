@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, MapPin } from "lucide-react";
 
 export const BLUE = "#2563eb";
 export const BLUE_DARK = "#1d4ed8";
@@ -35,7 +35,7 @@ export function LogoMark({ size = 36 }) {
         src="/logo.png"
         alt="Logo"
         onError={() => setOk(false)}
-        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0, background: "#fff", display: "block" }}
+        style={{ height: size, width: "auto", maxWidth: size * 5, objectFit: "contain", flexShrink: 0, display: "block" }}
       />
     );
   }
@@ -112,11 +112,32 @@ export function AnalyticsChart() {
 }
 
 export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 }) {
-  // x and y are FRACTIONS of the circle diameter (e.g. 0.05 = shift 5% right).
-  // Expressing the offset in % of the photo's own box keeps it identical
-  // whether this renders at 300px, 420px, or 1080px (the download canvas).
-  const offX = (x || 0) * 100; // % of circle box width
-  const offY = (y || 0) * 100;
+  // x and y are FRACTIONS of the circle diameter. To GUARANTEE the preview
+  // matches the exported PNG, we size the photo with the exact same cover-fit
+  // formula the canvas export uses — no CSS object-fit, which computed
+  // differently and caused the over-zoom.
+  const [nat, setNat] = React.useState(null); // natural {w,h} of the photo
+  React.useEffect(() => {
+    if (!photo) { setNat(null); return; }
+    const img = new Image();
+    img.onload = () => setNat({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = photo;
+  }, [photo]);
+
+  const circleD = size * 0.70;          // circle diameter in px
+  let imgStyle = null;
+  if (photo && nat) {
+    const cover = Math.max(circleD / nat.w, circleD / nat.h); // fit to cover circle
+    const drawW = nat.w * cover * (scale || 1);
+    const drawH = nat.h * cover * (scale || 1);
+    // center of circle + fractional offset, then top-left of the image
+    const left = circleD / 2 + (x || 0) * circleD - drawW / 2;
+    const top = circleD / 2 + (y || 0) * circleD - drawH / 2;
+    imgStyle = {
+      position: "absolute", width: drawW, height: drawH, left, top, maxWidth: "none",
+    };
+  }
+
   return (
     <div style={{
       position: "relative", width: size, height: size, borderRadius: round ? 24 : 16,
@@ -124,16 +145,13 @@ export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 })
     }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 70% 25%, rgba(255,255,255,.35), transparent 45%)" }} />
       <div style={{
-        position: "absolute", top: "50%", left: "50%", width: "70%", height: "70%",
+        position: "absolute", top: "50%", left: "50%", width: circleD, height: circleD,
         transform: "translate(-50%,-50%)", borderRadius: "50%", overflow: "hidden",
-        border: "8px solid rgba(255,255,255,.92)", boxShadow: "0 8px 30px rgba(0,0,0,.25)", background: "#e8eef5",
+        border: `${circleD * 0.03}px solid rgba(255,255,255,.92)`, boxShadow: "0 8px 30px rgba(0,0,0,.25)", background: "#e8eef5",
+        boxSizing: "content-box",
       }}>
-        {photo ? (
-          <img src={photo} alt="" style={{
-            position: "absolute", top: "50%", left: "50%", minWidth: "100%", minHeight: "100%",
-            transform: `translate(calc(-50% + ${offX}%), calc(-50% + ${offY}%)) scale(${scale})`,
-            transformOrigin: "center", objectFit: "cover",
-          }} />
+        {photo && imgStyle ? (
+          <img src={photo} alt="" style={imgStyle} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No photo</div>
         )}
@@ -192,6 +210,64 @@ export function ZoomControl({ value, min = 1, max = 3, onChange }) {
           style={{ flex: 1, height: 6, borderRadius: 4, appearance: "none", cursor: "pointer",
             background: `linear-gradient(90deg, ${BLUE} ${pct}%, #e2e8f0 ${pct}%)` }} />
         <button style={btn} onClick={() => onChange(clamp(value + 0.1))}>+</button>
+      </div>
+    </div>
+  );
+}
+
+// Two minimalist countdown cards: Abuja (Jun 26) and Lagos (Jul 3), 2026.
+function CountdownCard({ city, dateLabel, target }) {
+  const [t, setT] = React.useState(() => target - new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setT(target - new Date()), 1000);
+    return () => clearInterval(id);
+  }, [target]);
+
+  const cells = (() => {
+    if (t < 0) return null;
+    const d = Math.floor(t / 86400000);
+    const h = Math.floor(t / 3600000) % 24;
+    const m = Math.floor(t / 60000) % 60;
+    const s = Math.floor(t / 1000) % 60;
+    return [[d, "Days"], [h, "Hrs"], [m, "Min"], [s, "Sec"]];
+  })();
+
+  return (
+    <div style={{ background: "#fff", border: `0.5px solid ${LINE}`, borderRadius: 14, padding: "20px 16px", flex: 1, minWidth: 240 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: INK }}>{city}</div>
+          <div style={{ fontSize: 12, color: SLATE }}>{dateLabel}</div>
+        </div>
+        <MapPin size={18} color={BLUE} />
+      </div>
+      {cells ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
+          {cells.map(([v, label]) => (
+            <div key={label} style={{ background: "#eef2fb", borderRadius: 8, padding: "10px 4px", textAlign: "center" }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: INK, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{String(v).padStart(2, "0")}</div>
+              <div style={{ fontSize: 10, letterSpacing: "1px", color: "#94a3b8", textTransform: "uppercase", marginTop: 6 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", fontSize: 15, fontWeight: 700, color: BLUE, padding: "8px 0" }}>Happening now</div>
+      )}
+    </div>
+  );
+}
+
+export function ConferenceCountdown() {
+  const abuja = new Date("2026-06-26T00:00:00");
+  const lagos = new Date("2026-07-03T00:00:00");
+  return (
+    <div>
+      <p style={{ textAlign: "center", fontSize: 13, letterSpacing: "1.5px", color: SLATE, margin: "0 0 16px", textTransform: "uppercase" }}>
+        Counting down to Rain Conference '26
+      </p>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <CountdownCard city="Abuja" dateLabel="June 26, 2026" target={abuja} />
+        <CountdownCard city="Lagos" dateLabel="July 3, 2026" target={lagos} />
       </div>
     </div>
   );

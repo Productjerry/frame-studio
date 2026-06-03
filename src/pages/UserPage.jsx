@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   BLUE, INK, SLATE, LINE, BG, FONT_BODY,
-  Avatar, LogoMark, FrameCanvas, Slider, ZoomControl,
+  Avatar, LogoMark, FrameCanvas, Slider, ZoomControl, ConferenceCountdown,
 } from "../components/ui.jsx";
 import { fetchPublishedTemplates, subscribeTemplates } from "../lib/templates.js";
 import { downloadFramedDP } from "../lib/compose.js";
@@ -88,8 +88,7 @@ function UserDesktop({ activeFrame }) {
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <button style={{ width: 40, height: 40, borderRadius: "50%", border: `1px solid ${LINE}`, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ArrowLeft size={18} /></button>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <LogoMark size={32} />
-            <div style={{ fontWeight: 800, fontSize: 16, color: INK, letterSpacing: "-.5px" }}>RAIN CONFERENCE</div>
+            <LogoMark size={40} />
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -163,8 +162,11 @@ function UserDesktop({ activeFrame }) {
           </div>
         </div>
       </div>
-      <div style={{ textAlign: "center", paddingBottom: 36, fontSize: 14, color: SLATE }}>
-        Want more custom frames? <a style={{ color: BLUE, fontWeight: 700, cursor: "pointer" }}>Browse our Community Gallery</a>
+      <div style={{ textAlign: "center", padding: "0 36px 28px", fontSize: 14, color: SLATE }}>
+        Want more Petra frames? <a style={{ color: BLUE, fontWeight: 700, cursor: "pointer" }}>Browse our Community Gallery</a>
+      </div>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 36px 48px" }}>
+        <ConferenceCountdown />
       </div>
     </div>
   );
@@ -235,6 +237,10 @@ function UserMobile({ activeFrame }) {
                 <div style={{ fontSize: 12, color: i === 1 ? INK : SLATE, fontWeight: i === 1 ? 700 : 500, marginTop: 7 }}>{n}</div>
               </div>
             ))}
+          </div>
+
+          <div style={{ marginTop: 30 }}>
+            <ConferenceCountdown />
           </div>
         </div>
 

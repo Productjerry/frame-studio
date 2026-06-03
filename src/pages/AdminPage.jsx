@@ -68,11 +68,7 @@ function AdminDashboard({ email }) {
     <div style={{ display: "flex", height: "100%", background: BG, fontFamily: FONT_BODY }}>
       <aside style={{ width: 256, background: "#fff", borderRight: `1px solid ${LINE}`, display: "flex", flexDirection: "column", padding: "22px 16px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 6px 22px" }}>
-          <LogoMark size={34} />
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: INK, letterSpacing: "-.5px", lineHeight: 1 }}>RAIN CONFERENCE</div>
-            <div style={{ fontSize: 7.5, letterSpacing: "1.5px", color: SLATE, marginTop: 3 }}>A CHARISMATIC RENEWAL CONFERENCE</div>
-          </div>
+          <LogoMark size={40} />
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {navItems.map(({ k, icon: Icon }) => {
