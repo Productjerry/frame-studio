@@ -25,7 +25,7 @@ export default function AdminLogin({ onSignedIn }) {
           <LogoMark size={48} />
           <div style={{ textAlign: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 20, color: INK, letterSpacing: "-.5px" }}>Admin Sign In</div>
-            <div style={{ fontSize: 13.5, color: SLATE, marginTop: 4 }}>Frame Studio control panel</div>
+            <div style={{ fontSize: 13.5, color: SLATE, marginTop: 4 }}>Rain Conference DP control panel</div>
           </div>
         </div>
 

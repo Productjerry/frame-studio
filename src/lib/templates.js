@@ -61,10 +61,22 @@ export async function createTemplate(file, meta = {}) {
     tier: meta.tier || "Free",
     color: meta.color || "#2563eb",
     image_url,
+    shape: meta.shape || "circle",   // 'circle' | 'square'
+    ratio: meta.ratio || "square",   // 'square' | 'portrait'
+    slot: meta.slot || null,         // {x,y,w,h} fractions of canvas
   };
   const { data, error } = await supabase.from("templates").insert(row).select().single();
   if (error) { console.error(error); return null; }
   return data;
+}
+
+// Returns a map { template_id: count } of how many DPs were generated per theme.
+export async function fetchUsageCounts() {
+  const { data, error } = await supabase.from("generations").select("template_id");
+  if (error) { console.error(error); return {}; }
+  const counts = {};
+  (data || []).forEach((r) => { if (r.template_id) counts[r.template_id] = (counts[r.template_id] || 0) + 1; });
+  return counts;
 }
 
 export async function setActive(id, active) {

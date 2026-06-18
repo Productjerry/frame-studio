@@ -123,6 +123,19 @@ Edit a file directly on GitHub (pencil icon) and commit, OR upload new files the
 same way as part B. Vercel rebuilds and redeploys automatically within a minute.
 To add another admin, repeat Supabase step A4 with a new email/password.
 
+### IMPORTANT — database update for theme shapes + usage counts (v2)
+
+This version lets admins choose each theme's photo shape (circle or square),
+canvas size (1080×1080 or 1080×1350), and manually position the photo slot — and
+shows how many users used each theme. It needs a one-time database update:
+
+1. Supabase dashboard → SQL Editor → New query.
+2. Paste ALL of `schema_v2.sql` and Run. (Safe to re-run; it only adds new
+   columns if they're missing.)
+
+Until you run it, new uploads still work but shape/size/slot won't be saved and
+usage counts stay at zero.
+
 ### IMPORTANT — one-time database update for the DP gallery
 
 This version adds a public "Recent Frames" gallery of DPs that users choose to

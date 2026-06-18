@@ -111,12 +111,9 @@ export function AnalyticsChart() {
   );
 }
 
-export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 }) {
-  // x and y are FRACTIONS of the circle diameter. To GUARANTEE the preview
-  // matches the exported PNG, we size the photo with the exact same cover-fit
-  // formula the canvas export uses — no CSS object-fit, which computed
-  // differently and caused the over-zoom.
-  const [nat, setNat] = React.useState(null); // natural {w,h} of the photo
+export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360, shape = "circle", ratio = "square", slot = null }) {
+  // Mirrors composeFramedDP exactly so preview == export.
+  const [nat, setNat] = React.useState(null);
   React.useEffect(() => {
     if (!photo) { setNat(null); return; }
     const img = new Image();
@@ -124,31 +121,43 @@ export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 })
     img.src = photo;
   }, [photo]);
 
-  const circleD = size * 0.70;          // circle diameter in px
+  // canvas dimensions in px (scaled so the longer side == size)
+  const portrait = ratio === "portrait";
+  const aspectH = portrait ? 1350 / 1080 : 1; // height/width
+  const W = size;
+  const H = size * aspectH;
+
+  // default slot (fractions of canvas) when none provided
+  const s = slot || (shape === "circle"
+    ? { x: 0.15, y: (H - 0.70 * W) / 2 / H, w: 0.70, h: (0.70 * W) / H }
+    : { x: 0.08, y: 0.08, w: 0.84, h: 0.84 });
+  const slotX = s.x * W, slotY = s.y * H, slotW = s.w * W, slotH = s.h * H;
+
   let imgStyle = null;
   if (photo && nat) {
-    const cover = Math.max(circleD / nat.w, circleD / nat.h); // fit to cover circle
+    const cover = Math.max(slotW / nat.w, slotH / nat.h);
     const drawW = nat.w * cover * (scale || 1);
     const drawH = nat.h * cover * (scale || 1);
-    // center of circle + fractional offset, then top-left of the image
-    const left = circleD / 2 + (x || 0) * circleD - drawW / 2;
-    const top = circleD / 2 + (y || 0) * circleD - drawH / 2;
-    imgStyle = {
-      position: "absolute", width: drawW, height: drawH, left, top, maxWidth: "none",
-    };
+    const left = slotW / 2 + (x || 0) * slotW - drawW / 2;
+    const top = slotH / 2 + (y || 0) * slotH - drawH / 2;
+    imgStyle = { position: "absolute", width: drawW, height: drawH, left, top, maxWidth: "none" };
   }
 
+  const isCircle = shape === "circle";
   return (
     <div style={{
-      position: "relative", width: size, height: size, borderRadius: round ? 24 : 16,
-      overflow: "hidden", background: "linear-gradient(160deg,#8aa4c8,#5b7da8 45%,#33576f)",
+      position: "relative", width: W, height: H, borderRadius: round ? 24 : 16,
+      overflow: "hidden", background: imageUrl ? "#0b1220" : "linear-gradient(160deg,#8aa4c8,#5b7da8 45%,#33576f)",
     }}>
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 70% 25%, rgba(255,255,255,.35), transparent 45%)" }} />
+      {!imageUrl && <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 70% 25%, rgba(255,255,255,.35), transparent 45%)" }} />}
+
+      {/* photo slot */}
       <div style={{
-        position: "absolute", top: "50%", left: "50%", width: circleD, height: circleD,
-        transform: "translate(-50%,-50%)", borderRadius: "50%", overflow: "hidden",
-        border: `${circleD * 0.03}px solid rgba(255,255,255,.92)`, boxShadow: "0 8px 30px rgba(0,0,0,.25)", background: "#e8eef5",
-        boxSizing: "content-box",
+        position: "absolute", left: slotX, top: slotY, width: slotW, height: slotH,
+        borderRadius: isCircle ? "50%" : Math.min(slotW, slotH) * 0.06,
+        overflow: "hidden",
+        border: isCircle ? `${Math.min(slotW, slotH) * 0.03}px solid rgba(255,255,255,.92)` : "none",
+        boxSizing: "border-box", background: "#e8eef5",
       }}>
         {photo && imgStyle ? (
           <img src={photo} alt="" style={imgStyle} />
@@ -156,9 +165,10 @@ export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360 })
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>No photo</div>
         )}
       </div>
-      {/* If admin uploaded a real transparent PNG frame, overlay it; else draw the SVG ring. */}
+
+      {/* frame on top */}
       {imageUrl ? (
-        <img src={imageUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
+        <img src={imageUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none" }} />
       ) : (
         <svg viewBox="0 0 360 360" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
           <defs>

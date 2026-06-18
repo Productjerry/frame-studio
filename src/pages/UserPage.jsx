@@ -9,6 +9,7 @@ import {
 } from "../components/ui.jsx";
 import { fetchPublishedTemplates, subscribeTemplates } from "../lib/templates.js";
 import { downloadFramedDP } from "../lib/compose.js";
+import { shareGeneration, recordUsage, fetchRecentGenerations, subscribeGenerations } from "../lib/generations.js";
 
 function useResponsive() {
   const [mobile, setMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 720 : false);
@@ -24,21 +25,74 @@ export default function UserPage() {
   const mobile = useResponsive();
   const [templates, setTemplates] = useState([]);
   const [selected, setSelected] = useState(0);
+  const [recentDps, setRecentDps] = useState([]); // [{image_url}]
 
   async function refresh() { setTemplates(await fetchPublishedTemplates()); }
+  async function refreshDps() { setRecentDps(await fetchRecentGenerations(8)); }
   useEffect(() => {
     refresh();
-    const unsub = subscribeTemplates(refresh);
-    return unsub;
+    refreshDps();
+    const u1 = subscribeTemplates(refresh);
+    const u2 = subscribeGenerations(refreshDps);
+    return () => { u1 && u1(); u2 && u2(); };
   }, []);
 
-  const activeFrame = templates[selected]?.image_url || null;
-  return mobile
-    ? <UserMobile activeFrame={activeFrame} />
-    : <UserDesktop activeFrame={activeFrame} />;
+  const activeTemplate = templates[selected] || null;
+  const shared = { activeTemplate, recentDps, onShared: refreshDps };
+  return mobile ? <UserMobile {...shared} /> : <UserDesktop {...shared} />;
 }
 
-const recent = ["@alex.d", "@sarah_m", "@mike.w", "@jess_k"];
+// Placeholder avatars shown only until real shared DPs exist.
+const placeholderRecent = ["@alex.d", "@sarah_m", "@mike.w", "@jess_k"];
+
+// Renders the recent-frames row: real shared DPs if any exist, else placeholders.
+function RecentFrames({ recentDps, size = 56 }) {
+  const hasReal = recentDps && recentDps.length > 0;
+  if (hasReal) {
+    return (
+      <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 6 }}>
+        {recentDps.map((d, i) => (
+          <div key={d.image_url} style={{ textAlign: "center", flexShrink: 0 }}>
+            <div style={{
+              width: size, height: size, borderRadius: "50%", overflow: "hidden",
+              background: `#e2e8f0 url(${d.image_url}) center/cover`,
+              boxShadow: `0 0 0 2.5px ${i === 0 ? BLUE : "#e2e8f0"}, 0 0 0 5px #fff`,
+            }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 6 }}>
+      {placeholderRecent.map((n, i) => (
+        <div key={n} style={{ textAlign: "center", flexShrink: 0 }}>
+          <Avatar name={n} size={size} ring={i === 1 ? BLUE : "#e2e8f0"} />
+          <div style={{ fontSize: 12, color: i === 1 ? INK : SLATE, fontWeight: i === 1 ? 700 : 500, marginTop: 7 }}>{n}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Small modal asking the user whether to add their DP to the public gallery.
+function ShareConsent({ open, onYes, onNo }) {
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 18, padding: "28px 26px", maxWidth: 360, width: "100%", boxShadow: "0 20px 50px rgba(0,0,0,.25)", fontFamily: FONT_BODY }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: INK }}>Show your DP in the gallery?</div>
+        <div style={{ fontSize: 14, color: SLATE, marginTop: 8, lineHeight: 1.5 }}>
+          Your framed photo could appear in the public “Recent Frames” gallery for others to see. No name is attached. Your download has already saved either way.
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+          <button onClick={onNo} style={{ flex: 1, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 11, padding: "12px", fontWeight: 700, fontSize: 14.5, color: "#334155", cursor: "pointer", fontFamily: FONT_BODY }}>No thanks</button>
+          <button onClick={onYes} style={{ flex: 1, background: BLUE, color: "#fff", border: "none", borderRadius: 11, padding: "12px", fontWeight: 700, fontSize: 14.5, cursor: "pointer", fontFamily: FONT_BODY }}>Yes, share it</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ToolBtn({ icon: Icon, label, onClick }) {
   return (
@@ -66,24 +120,37 @@ function MobileTool({ icon: Icon, label, onClick }) {
   );
 }
 
-function UserDesktop({ activeFrame }) {
+function UserDesktop({ activeTemplate, recentDps, onShared }) {
+  const activeFrame = activeTemplate?.image_url || null;
+  const shape = activeTemplate?.shape || "circle";
+  const ratio = activeTemplate?.ratio || "square";
+  const slot = activeTemplate?.slot || null;
   const [photo, setPhoto] = useState(null);
-  const [x, setX] = useState(0);      // fraction of circle diameter
+  const [x, setX] = useState(0);      // fraction of slot
   const [y, setY] = useState(0);
   const [scale, setScale] = useState(1);
   const [rot, setRot] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [pendingBlob, setPendingBlob] = useState(null); // awaiting share consent
   const fileRef = useRef(null);
   function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setPhoto(r.result); setX(0); setY(0); setScale(1); }; r.readAsDataURL(f); }
   async function handleDownload() {
     if (!photo) return;
     setBusy(true);
-    try { await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, rotation: rot }); }
-    finally { setBusy(false); }
+    try {
+      const blob = await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, rotation: rot, shape, ratio, slot });
+      recordUsage(activeTemplate?.id);   // count this generation
+      if (blob) setPendingBlob(blob);    // ask whether to share
+    } finally { setBusy(false); }
+  }
+  async function confirmShare() {
+    const blob = pendingBlob; setPendingBlob(null);
+    if (blob) { await shareGeneration(blob, activeTemplate?.id); onShared && onShared(); }
   }
 
   return (
     <div style={{ height: "100%", overflow: "auto", background: BG, fontFamily: FONT_BODY }}>
+      <ShareConsent open={!!pendingBlob} onYes={confirmShare} onNo={() => setPendingBlob(null)} />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 36px", borderBottom: `1px solid ${LINE}`, background: "#fff" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <button style={{ width: 40, height: 40, borderRadius: "50%", border: `1px solid ${LINE}`, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><ArrowLeft size={18} /></button>
@@ -128,14 +195,7 @@ function UserDesktop({ activeFrame }) {
               <span style={{ fontWeight: 800, fontSize: 16, color: INK }}>Recent Frames</span>
               <a style={{ color: SLATE, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View All</a>
             </div>
-            <div style={{ display: "flex", gap: 18 }}>
-              {recent.map((n, i) => (
-                <div key={n} style={{ textAlign: "center" }}>
-                  <Avatar name={n} size={56} ring={i === 1 ? BLUE : "#e2e8f0"} />
-                  <div style={{ fontSize: 12, color: i === 1 ? INK : SLATE, fontWeight: i === 1 ? 700 : 500, marginTop: 7 }}>{n}</div>
-                </div>
-              ))}
-            </div>
+            <RecentFrames recentDps={recentDps} size={56} />
           </div>
         </div>
 
@@ -149,7 +209,7 @@ function UserDesktop({ activeFrame }) {
           </div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <div style={{ transform: `rotate(${rot}deg)`, transition: "transform .3s" }}>
-              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={420} />
+              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={420} shape={shape} ratio={ratio} slot={slot} />
             </div>
           </div>
           <div style={{ borderTop: `1px solid ${LINE}`, margin: "28px 0 22px" }} />
@@ -172,27 +232,40 @@ function UserDesktop({ activeFrame }) {
   );
 }
 
-function UserMobile({ activeFrame }) {
+function UserMobile({ activeTemplate, recentDps, onShared }) {
+  const activeFrame = activeTemplate?.image_url || null;
+  const shape = activeTemplate?.shape || "circle";
+  const ratio = activeTemplate?.ratio || "square";
+  const slot = activeTemplate?.slot || null;
   const [photo, setPhoto] = useState(null);
   const [x, setX] = useState(0);
   const [y, setY] = useState(0);
   const [scale, setScale] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [pendingBlob, setPendingBlob] = useState(null);
   const fileRef = useRef(null);
   function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setPhoto(r.result); setX(0); setY(0); setScale(1); }; r.readAsDataURL(f); }
   async function handleDownload() {
     if (!photo) return;
     setBusy(true);
-    try { await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale }); }
-    finally { setBusy(false); }
+    try {
+      const blob = await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, shape, ratio, slot });
+      recordUsage(activeTemplate?.id);
+      if (blob) setPendingBlob(blob);
+    } finally { setBusy(false); }
+  }
+  async function confirmShare() {
+    const blob = pendingBlob; setPendingBlob(null);
+    if (blob) { await shareGeneration(blob, activeTemplate?.id); onShared && onShared(); }
   }
 
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: "26px 0", background: BG, height: "100%", overflow: "auto", fontFamily: FONT_BODY }}>
+      <ShareConsent open={!!pendingBlob} onYes={confirmShare} onNo={() => setPendingBlob(null)} />
       <div style={{ width: "100%", maxWidth: 440, background: "#fff", minHeight: "100%", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 14px" }}>
           <button style={{ width: 42, height: 42, borderRadius: "50%", border: `1px solid ${LINE}`, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><ArrowLeft size={18} /></button>
-          <span style={{ fontWeight: 800, fontSize: 18, color: INK }}>Frame Studio</span>
+          <span style={{ fontWeight: 800, fontSize: 18, color: INK }}>Rain Conference DP</span>
           <button style={{ width: 42, height: 42, borderRadius: "50%", border: `1px solid ${LINE}`, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}><MoreVertical size={18} /></button>
         </div>
 
@@ -213,7 +286,7 @@ function UserMobile({ activeFrame }) {
 
           <div style={{ background: "#fff", borderRadius: 22, border: `1px solid ${LINE}`, padding: 16, boxShadow: "0 2px 10px rgba(15,23,42,.05)" }}>
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={300} />
+              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={300} shape={shape} ratio={ratio} slot={slot} />
             </div>
             <div style={{ marginTop: 18, padding: "0 4px" }}>
               <Slider label="X" value={x} min={-0.4} max={0.4} step={0.005} onChange={setX} />
@@ -230,14 +303,7 @@ function UserMobile({ activeFrame }) {
             <span style={{ fontWeight: 800, fontSize: 18, color: INK }}>Recent Frames</span>
             <a style={{ color: SLATE, fontSize: 14, fontWeight: 600 }}>View All</a>
           </div>
-          <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 6 }}>
-            {recent.map((n, i) => (
-              <div key={n} style={{ textAlign: "center", flexShrink: 0 }}>
-                <Avatar name={n} size={62} ring={i === 1 ? BLUE : "#e2e8f0"} />
-                <div style={{ fontSize: 12, color: i === 1 ? INK : SLATE, fontWeight: i === 1 ? 700 : 500, marginTop: 7 }}>{n}</div>
-              </div>
-            ))}
-          </div>
+          <RecentFrames recentDps={recentDps} size={62} />
 
           <div style={{ marginTop: 30 }}>
             <ConferenceCountdown />

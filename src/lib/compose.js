@@ -5,7 +5,6 @@
    white ring), then either the uploaded frame PNG or the SVG text ring.
 ------------------------------------------------------------------ */
 
-const SIZE = 1080; // output resolution (square)
 
 function loadImage(src, crossOrigin) {
   return new Promise((resolve, reject) => {
@@ -35,100 +34,99 @@ function ringSvgDataUrl() {
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
-export async function composeFramedDP({ photo, frameUrl, x = 0, y = 0, scale = 1, rotation = 0 }) {
+export async function composeFramedDP({
+  photo, frameUrl, x = 0, y = 0, scale = 1, rotation = 0,
+  shape = "circle", ratio = "square", slot = null,
+}) {
+  const W = 1080;
+  const H = ratio === "portrait" ? 1350 : 1080;
   const canvas = document.createElement("canvas");
-  canvas.width = SIZE;
-  canvas.height = SIZE;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext("2d");
 
-  // Apply rotation about the canvas center (mirrors the CSS rotate on the
-  // preview, which spins the whole framed disc). 90° steps stay corner-clean.
+  // Default slot: a centered circle (legacy behaviour) when none is given.
+  // slot fractions are of the WHOLE canvas: {x,y,w,h} with 0..1.
+  const s = slot || (shape === "circle"
+    ? { x: 0.15, y: (H - 0.70 * W) / 2 / H, w: 0.70, h: (0.70 * W) / H }
+    : { x: 0.08, y: 0.08, w: 0.84, h: 0.84 });
+  const slotX = s.x * W, slotY = s.y * H, slotW = s.w * W, slotH = s.h * H;
+
   if (rotation) {
-    ctx.translate(SIZE / 2, SIZE / 2);
+    ctx.translate(W / 2, H / 2);
     ctx.rotate((rotation * Math.PI) / 180);
-    ctx.translate(-SIZE / 2, -SIZE / 2);
+    ctx.translate(-W / 2, -H / 2);
   }
 
-  // 1. gradient background (matches the on-screen blue gradient)
-  const g = ctx.createLinearGradient(0, 0, SIZE, SIZE);
-  g.addColorStop(0, "#8aa4c8");
-  g.addColorStop(0.45, "#5b7da8");
-  g.addColorStop(1, "#33576f");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, SIZE, SIZE);
+  // Background only matters when there is NO frame PNG (legacy ring look).
+  if (!frameUrl) {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#8aa4c8"); g.addColorStop(0.45, "#5b7da8"); g.addColorStop(1, "#33576f");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const rg = ctx.createRadialGradient(W * 0.7, H * 0.25, 0, W * 0.7, H * 0.25, Math.max(W, H) * 0.5);
+    rg.addColorStop(0, "rgba(255,255,255,0.35)"); rg.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+  }
 
-  // soft highlight
-  const rg = ctx.createRadialGradient(SIZE * 0.7, SIZE * 0.25, 0, SIZE * 0.7, SIZE * 0.25, SIZE * 0.5);
-  rg.addColorStop(0, "rgba(255,255,255,0.35)");
-  rg.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = rg;
-  ctx.fillRect(0, 0, SIZE, SIZE);
-
-  // 2. circular photo — the on-screen circle is 70% of the box
-  const circleD = SIZE * 0.70;
-  const cx = SIZE / 2;
-  const cy = SIZE / 2;
-  const r = circleD / 2;
-
-  // white ring behind the photo — preview uses an 8px border on the circle,
-  // which is ~3% of the circle diameter; mirror that here.
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, r + circleD * 0.03, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fill();
-  ctx.restore();
-
+  // ---- draw the user's photo into the slot, masked to shape ----
   if (photo) {
     const img = await loadImage(photo, false);
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    if (shape === "circle") {
+      const r = Math.min(slotW, slotH) / 2;
+      ctx.arc(slotX + slotW / 2, slotY + slotH / 2, r, 0, Math.PI * 2);
+    } else {
+      const rad = Math.min(slotW, slotH) * 0.06; // gentle rounded corners
+      roundRect(ctx, slotX, slotY, slotW, slotH, rad);
+    }
     ctx.clip();
 
-    // Mirror the preview EXACTLY:
-    //  - object-fit: cover into the circle's bounding box (circleD square)
-    //  - translate by x/y as a FRACTION of the circle box
-    //  - scale about the center
-    const cover = Math.max(circleD / img.width, circleD / img.height);
-    const baseW = img.width * cover;
-    const baseH = img.height * cover;
-    // scale about center
-    const drawW = baseW * scale;
-    const drawH = baseH * scale;
-    // center of the circle box, plus fractional offset (x,y are fractions of circleD)
-    const centerX = cx + (x || 0) * circleD;
-    const centerY = cy + (y || 0) * circleD;
-    const dx = centerX - drawW / 2;
-    const dy = centerY - drawH / 2;
-    ctx.drawImage(img, dx, dy, drawW, drawH);
+    // cover-fit into the slot box, then user's fractional x/y offset + scale.
+    const cover = Math.max(slotW / img.width, slotH / img.height);
+    const drawW = img.width * cover * scale;
+    const drawH = img.height * cover * scale;
+    const cxp = slotX + slotW / 2 + (x || 0) * slotW;
+    const cyp = slotY + slotH / 2 + (y || 0) * slotH;
+    ctx.drawImage(img, cxp - drawW / 2, cyp - drawH / 2, drawW, drawH);
     ctx.restore();
+
+    // subtle white ring for circle shape (matches preview)
+    if (shape === "circle") {
+      ctx.save();
+      ctx.beginPath();
+      const r = Math.min(slotW, slotH) / 2;
+      ctx.lineWidth = Math.min(slotW, slotH) * 0.03;
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.arc(slotX + slotW / 2, slotY + slotH / 2, r - ctx.lineWidth / 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
-  // 3. frame overlay — uploaded PNG, or the SVG text ring fallback
+  // ---- frame on top ----
   let frameImg = null;
   try {
-    frameImg = frameUrl
-      ? await loadImage(frameUrl, true)
-      : await loadImage(ringSvgDataUrl(), false);
+    frameImg = frameUrl ? await loadImage(frameUrl, true) : await loadImage(ringSvgDataUrl(), false);
   } catch (_) {
-    // if a remote frame fails CORS, fall back to the ring
-    try { frameImg = await loadImage(ringSvgDataUrl(), false); } catch (_) {}
+    if (!frameUrl) { try { frameImg = await loadImage(ringSvgDataUrl(), false); } catch (_) {} }
   }
-  if (frameImg) {
-    // contain-fit the frame across the full square
-    ctx.drawImage(frameImg, 0, 0, SIZE, SIZE);
-  }
+  if (frameImg) ctx.drawImage(frameImg, 0, 0, W, H);
 
-  // 4. export
-  return await new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), "image/png");
-  });
+  return await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
 }
 
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 export async function downloadFramedDP(opts) {
   const blob = await composeFramedDP(opts);
-  if (!blob) return;
+  if (!blob) return null;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -137,4 +135,5 @@ export async function downloadFramedDP(opts) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return blob;
 }

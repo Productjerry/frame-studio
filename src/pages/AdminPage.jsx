@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   LayoutDashboard, Layers, Users, Settings, Bell, Search, Image as ImageIcon,
-  Grid3x3, Zap, Crown, UploadCloud, Trash2, Plus, Pencil, LogOut,
+  Grid3x3, Zap, Crown, UploadCloud, Trash2, Plus, LogOut,
 } from "lucide-react";
 import {
   BLUE, INK, SLATE, LINE, BG, FONT_BODY,
@@ -10,8 +10,9 @@ import {
 import AdminLogin from "../components/AdminLogin.jsx";
 import { getSession, onAuthChange, signOut } from "../lib/auth.js";
 import {
-  fetchTemplates, createTemplate, setActive, publishAll, deleteTemplate, subscribeTemplates,
+  fetchTemplates, createTemplate, setActive, publishAll, deleteTemplate, subscribeTemplates, fetchUsageCounts,
 } from "../lib/templates.js";
+import ThemeEditor from "../components/ThemeEditor.jsx";
 
 export default function AdminPage() {
   const [session, setSession] = useState(undefined); // undefined = loading
@@ -34,9 +35,14 @@ function AdminDashboard({ email }) {
   const [nav, setNav] = useState("Dashboard");
   const [period, setPeriod] = useState("Daily");
   const [templates, setTemplates] = useState([]);
+  const [usage, setUsage] = useState({});       // {template_id: count}
+  const [editorFile, setEditorFile] = useState(null); // file awaiting slot setup
   const fileRef = useRef(null);
 
-  async function refresh() { setTemplates(await fetchTemplates()); }
+  async function refresh() {
+    setTemplates(await fetchTemplates());
+    setUsage(await fetchUsageCounts());
+  }
   useEffect(() => {
     refresh();
     const unsub = subscribeTemplates(refresh);
@@ -56,16 +62,21 @@ function AdminDashboard({ email }) {
     { user: "@jess_k", tpl: "Lagos Edition", status: "Success", time: "21m ago" },
   ];
 
-  async function handleUpload(e) {
+  function handleUpload(e) {
     const f = e.target.files?.[0];
     if (!f) return;
-    await createTemplate(f);
-    await refresh();
+    setEditorFile(f);       // open the slot/shape/ratio editor
     e.target.value = "";
+  }
+  async function handleSaveTheme({ name, shape, ratio, slot }) {
+    await createTemplate(editorFile, { name, shape, ratio, slot });
+    setEditorFile(null);
+    await refresh();
   }
 
   return (
     <div style={{ display: "flex", height: "100%", background: BG, fontFamily: FONT_BODY }}>
+      {editorFile && <ThemeEditor file={editorFile} onCancel={() => setEditorFile(null)} onSave={handleSaveTheme} />}
       <aside style={{ width: 256, background: "#fff", borderRight: `1px solid ${LINE}`, display: "flex", flexDirection: "column", padding: "22px 16px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 6px 22px" }}>
           <LogoMark size={40} />
@@ -101,7 +112,7 @@ function AdminDashboard({ email }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px", borderBottom: `1px solid ${LINE}`, background: BG, position: "sticky", top: 0, zIndex: 5 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: INK, letterSpacing: "-.5px" }}>Admin Dashboard</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13.5, color: SLATE }}>Overview of Frame Studio performance</p>
+            <p style={{ margin: "4px 0 0", fontSize: 13.5, color: SLATE }}>Overview of Rain Conference DP performance</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 11, padding: "10px 14px", width: 260 }}>
@@ -208,17 +219,25 @@ function AdminDashboard({ email }) {
                 {templates.length === 0 && (
                   <div style={{ fontSize: 13, color: SLATE, padding: "20px 0", textAlign: "center" }}>No templates yet — upload one above.</div>
                 )}
-                {templates.map((t) => (
-                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12, borderRadius: 14, border: `1px solid ${LINE}` }}>
-                    <div style={{ width: 46, height: 46, borderRadius: 11, flexShrink: 0, background: t.image_url ? `url(${t.image_url}) center/cover` : `linear-gradient(135deg,${t.color}22,${t.color}11)`, border: `1px solid ${LINE}` }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: SLATE }}>Used {(t.uses || 0).toLocaleString()} times · Updated {t.updated}</div>
+                {templates.map((t) => {
+                  const count = usage[t.id] || 0;
+                  return (
+                    <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 13, padding: 12, borderRadius: 14, border: `1px solid ${LINE}` }}>
+                      <div style={{ width: 46, height: 46, borderRadius: 11, flexShrink: 0, background: t.image_url ? `#0b1220 url(${t.image_url}) center/cover` : `linear-gradient(135deg,${t.color}22,${t.color}11)`, border: `1px solid ${LINE}` }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                        <div style={{ fontSize: 12, color: SLATE }}>
+                          {count.toLocaleString()} {count === 1 ? "user" : "users"} · {t.shape === "circle" ? "Circle" : "Square"} · {t.ratio === "portrait" ? "1080×1350" : "1080×1080"}
+                        </div>
+                      </div>
+                      <Toggle on={t.active} onClick={async () => { await setActive(t.id, !t.active); refresh(); }} />
+                      <button title="Delete theme" onClick={async () => { if (confirm(`Delete “${t.name}”? This cannot be undone.`)) { await deleteTemplate(t.id); refresh(); } }}
+                        style={{ border: "none", background: "transparent", cursor: "pointer", padding: 4, display: "flex" }}>
+                        <Trash2 size={16} color="#dc2626" />
+                      </button>
                     </div>
-                    <Pencil size={16} color={SLATE} style={{ cursor: "pointer" }} />
-                    <Toggle on={t.active} onClick={async () => { await setActive(t.id, !t.active); refresh(); }} />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
