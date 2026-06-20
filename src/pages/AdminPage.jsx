@@ -68,8 +68,8 @@ function AdminDashboard({ email }) {
     setEditorFile(f);       // open the slot/shape/ratio editor
     e.target.value = "";
   }
-  async function handleSaveTheme({ name, shape, ratio, slot }) {
-    await createTemplate(editorFile, { name, shape, ratio, slot });
+  async function handleSaveTheme({ name, shape, ratio, slot dyntext }) {
+    await createTemplate(editorFile, { name, shape, ratio, slot dyntext });
     setEditorFile(null);
     await refresh();
   }
