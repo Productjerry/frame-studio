@@ -5,6 +5,7 @@
    white ring), then either the uploaded frame PNG or the SVG text ring.
 ------------------------------------------------------------------ */
 
+import { ensureBender } from "./fonts.js";
 
 function loadImage(src, crossOrigin) {
   return new Promise((resolve, reject) => {
@@ -37,9 +38,11 @@ function ringSvgDataUrl() {
 export async function composeFramedDP({
   photo, frameUrl, x = 0, y = 0, scale = 1, rotation = 0,
   shape = "circle", ratio = "square", slot = null,
+  dyntext = null, name = "",
 }) {
   const W = 1080;
   const H = ratio === "portrait" ? 1350 : 1080;
+  if (dyntext && dyntext.text) { try { await ensureBender(); } catch (_) {} }
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -112,6 +115,41 @@ export async function composeFramedDP({
     if (!frameUrl) { try { frameImg = await loadImage(ringSvgDataUrl(), false); } catch (_) {} }
   }
   if (frameImg) ctx.drawImage(frameImg, 0, 0, W, H);
+
+  // ---- dynamic text (admin-defined, with {name} filled in) ----
+  if (dyntext && dyntext.text) {
+    const b = dyntext.box || { x: 0.08, y: 0.7, w: 0.84, h: 0.12 };
+    const bx = b.x * W, by = b.y * H, bw = b.w * W, bh = b.h * H;
+    const fontPx = (dyntext.fontSize || 0.05) * W; // fontSize is fraction of width
+    const font = dyntext.font || "Bender";
+    const align = dyntext.align || "center";
+    const color = dyntext.color || "#ffffff";
+    const filled = dyntext.text.replace(/\{name\}/gi, (name || "").trim());
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.font = `700 ${fontPx}px ${font}, sans-serif`;
+    ctx.textBaseline = "top";
+    ctx.textAlign = align;
+
+    // word-wrap within the box width
+    const words = filled.split(/\s+/);
+    const lines = [];
+    let line = "";
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (ctx.measureText(test).width > bw && line) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+
+    const lineH = fontPx * 1.15;
+    const totalH = lines.length * lineH;
+    let ty = by + Math.max(0, (bh - totalH) / 2); // vertically center in box
+    const tx = align === "center" ? bx + bw / 2 : align === "right" ? bx + bw : bx;
+    lines.forEach((ln) => { ctx.fillText(ln, tx, ty); ty += lineH; });
+    ctx.restore();
+  }
 
   return await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
 }

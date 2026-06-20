@@ -38,8 +38,32 @@ export default function UserPage() {
   }, []);
 
   const activeTemplate = templates[selected] || null;
-  const shared = { activeTemplate, recentDps, onShared: refreshDps };
+  const shared = { templates, selected, setSelected, activeTemplate, recentDps, onShared: refreshDps };
   return mobile ? <UserMobile {...shared} /> : <UserDesktop {...shared} />;
+}
+
+// A horizontal picker of published templates (thumbnails).
+function TemplatePicker({ templates, selected, setSelected }) {
+  if (!templates || templates.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "1px", color: SLATE, marginBottom: 10 }}>CHOOSE A TEMPLATE</div>
+      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
+        {templates.map((t, i) => (
+          <button key={t.id} onClick={() => setSelected(i)} style={{
+            flexShrink: 0, width: 64, cursor: "pointer", border: "none", background: "none", padding: 0, textAlign: "center",
+          }}>
+            <div style={{
+              width: 64, height: t.ratio === "portrait" ? 80 : 64, borderRadius: 12,
+              background: t.image_url ? `#0b1220 url(${t.image_url}) center/cover` : `linear-gradient(135deg,${t.color || "#2563eb"}33,${t.color || "#2563eb"}11)`,
+              boxShadow: i === selected ? `0 0 0 3px ${BLUE}, 0 0 0 5px #fff` : `0 0 0 1px ${LINE}`,
+            }} />
+            <div style={{ fontSize: 11, color: i === selected ? INK : SLATE, fontWeight: i === selected ? 700 : 500, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Placeholder avatars shown only until real shared DPs exist.
@@ -120,25 +144,28 @@ function MobileTool({ icon: Icon, label, onClick }) {
   );
 }
 
-function UserDesktop({ activeTemplate, recentDps, onShared }) {
+function UserDesktop({ templates, selected, setSelected, activeTemplate, recentDps, onShared }) {
   const activeFrame = activeTemplate?.image_url || null;
   const shape = activeTemplate?.shape || "circle";
   const ratio = activeTemplate?.ratio || "square";
   const slot = activeTemplate?.slot || null;
+  const dyntext = activeTemplate?.dyntext || null;
   const [photo, setPhoto] = useState(null);
   const [x, setX] = useState(0);      // fraction of slot
   const [y, setY] = useState(0);
   const [scale, setScale] = useState(1);
   const [rot, setRot] = useState(0);
+  const [nameText, setNameText] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingBlob, setPendingBlob] = useState(null); // awaiting share consent
   const fileRef = useRef(null);
+  useEffect(() => { if (dyntext) import("../lib/fonts.js").then((m) => m.ensureBender()); }, [dyntext]);
   function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setPhoto(r.result); setX(0); setY(0); setScale(1); }; r.readAsDataURL(f); }
   async function handleDownload() {
     if (!photo) return;
     setBusy(true);
     try {
-      const blob = await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, rotation: rot, shape, ratio, slot });
+      const blob = await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, rotation: rot, shape, ratio, slot, dyntext, name: nameText });
       recordUsage(activeTemplate?.id);   // count this generation
       if (blob) setPendingBlob(blob);    // ask whether to share
     } finally { setBusy(false); }
@@ -169,6 +196,15 @@ function UserDesktop({ activeTemplate, recentDps, onShared }) {
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "34px 36px", display: "grid", gridTemplateColumns: "380px 1fr", gap: 28 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPick} />
+          <TemplatePicker templates={templates} selected={selected} setSelected={setSelected} />
+          {dyntext && (
+            <div style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 18, padding: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "1px", color: SLATE, marginBottom: 10 }}>YOUR NAME</div>
+              <input value={nameText} onChange={(e) => setNameText(e.target.value)} placeholder="Type your name…"
+                style={{ width: "100%", padding: "13px 14px", borderRadius: 11, border: `1px solid ${LINE}`, fontSize: 15, outline: "none", fontFamily: FONT_BODY }} />
+              <div style={{ fontSize: 12, color: SLATE, marginTop: 8 }}>It appears live in the design above.</div>
+            </div>
+          )}
           <div style={{ background: "#eef4ff", borderRadius: 18, padding: "34px 26px", textAlign: "center" }}>
             <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 2px 8px rgba(37,99,235,.12)" }}>
               <UploadCloud size={26} color={BLUE} />
@@ -209,7 +245,7 @@ function UserDesktop({ activeTemplate, recentDps, onShared }) {
           </div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <div style={{ transform: `rotate(${rot}deg)`, transition: "transform .3s" }}>
-              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={420} shape={shape} ratio={ratio} slot={slot} />
+              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={420} shape={shape} ratio={ratio} slot={slot} dyntext={dyntext} name={nameText} />
             </div>
           </div>
           <div style={{ borderTop: `1px solid ${LINE}`, margin: "28px 0 22px" }} />
@@ -232,24 +268,27 @@ function UserDesktop({ activeTemplate, recentDps, onShared }) {
   );
 }
 
-function UserMobile({ activeTemplate, recentDps, onShared }) {
+function UserMobile({ templates, selected, setSelected, activeTemplate, recentDps, onShared }) {
   const activeFrame = activeTemplate?.image_url || null;
   const shape = activeTemplate?.shape || "circle";
   const ratio = activeTemplate?.ratio || "square";
   const slot = activeTemplate?.slot || null;
+  const dyntext = activeTemplate?.dyntext || null;
   const [photo, setPhoto] = useState(null);
   const [x, setX] = useState(0);
   const [y, setY] = useState(0);
   const [scale, setScale] = useState(1);
+  const [nameText, setNameText] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingBlob, setPendingBlob] = useState(null);
   const fileRef = useRef(null);
+  useEffect(() => { if (dyntext) import("../lib/fonts.js").then((m) => m.ensureBender()); }, [dyntext]);
   function onPick(e) { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setPhoto(r.result); setX(0); setY(0); setScale(1); }; r.readAsDataURL(f); }
   async function handleDownload() {
     if (!photo) return;
     setBusy(true);
     try {
-      const blob = await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, shape, ratio, slot });
+      const blob = await downloadFramedDP({ photo, frameUrl: activeFrame, x, y, scale, shape, ratio, slot, dyntext, name: nameText });
       recordUsage(activeTemplate?.id);
       if (blob) setPendingBlob(blob);
     } finally { setBusy(false); }
@@ -271,6 +310,7 @@ function UserMobile({ activeTemplate, recentDps, onShared }) {
 
         <div style={{ padding: "8px 20px 24px", flex: 1 }}>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPick} />
+          <TemplatePicker templates={templates} selected={selected} setSelected={setSelected} />
           <div onClick={() => fileRef.current?.click()} style={{ background: "#eef4ff", border: "2px dashed #c7d6f0", borderRadius: 18, padding: "30px 20px", textAlign: "center", cursor: "pointer" }}>
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#fff", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <UploadCloud size={26} color={BLUE} />
@@ -279,6 +319,14 @@ function UserMobile({ activeTemplate, recentDps, onShared }) {
             <div style={{ fontSize: 13, color: SLATE, marginTop: 5 }}>JPG, PNG up to 5MB</div>
           </div>
 
+          {dyntext && (
+            <div style={{ marginTop: 16, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 14, padding: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "1px", color: SLATE, marginBottom: 8 }}>YOUR NAME</div>
+              <input value={nameText} onChange={(e) => setNameText(e.target.value)} placeholder="Type your name…"
+                style={{ width: "100%", padding: "12px 13px", borderRadius: 10, border: `1px solid ${LINE}`, fontSize: 15, outline: "none", fontFamily: FONT_BODY }} />
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "26px 0 16px" }}>
             <span style={{ fontWeight: 800, fontSize: 19, color: INK }}>Preview</span>
             <span style={{ background: "#eff6ff", color: BLUE, fontWeight: 700, fontSize: 13, padding: "6px 13px", borderRadius: 20 }}>Pro Frame</span>
@@ -286,7 +334,7 @@ function UserMobile({ activeTemplate, recentDps, onShared }) {
 
           <div style={{ background: "#fff", borderRadius: 22, border: `1px solid ${LINE}`, padding: 16, boxShadow: "0 2px 10px rgba(15,23,42,.05)" }}>
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={300} shape={shape} ratio={ratio} slot={slot} />
+              <FrameCanvas photo={photo} x={x} y={y} scale={scale} imageUrl={activeFrame} round size={300} shape={shape} ratio={ratio} slot={slot} dyntext={dyntext} name={nameText} />
             </div>
             <div style={{ marginTop: 18, padding: "0 4px" }}>
               <Slider label="X" value={x} min={-0.4} max={0.4} step={0.005} onChange={setX} />

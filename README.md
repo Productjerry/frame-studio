@@ -123,6 +123,24 @@ Edit a file directly on GitHub (pencil icon) and commit, OR upload new files the
 same way as part B. Vercel rebuilds and redeploys automatically within a minute.
 To add another admin, repeat Supabase step A4 with a new email/password.
 
+### IMPORTANT — database update for dynamic name text (v3)
+
+This version lets admins add a text box with a `{name}` placeholder that fills in
+the user's name live, in the Bender font. Two one-time setup steps:
+
+1. Run `schema_v3.sql` once in Supabase SQL Editor (adds a `dyntext` column).
+   Safe to re-run.
+2. Add the Bender font: put your font file at `public/fonts/bender.woff2` (or
+   `.ttf` / `.otf`) and upload it to GitHub. See
+   `public/fonts/PUT_BENDER_FONT_HERE.txt` for the exact steps. Without it, the
+   dynamic text still works but uses a fallback bold font.
+
+How it works: in the admin theme editor, toggle on "Dynamic Name Text," type a
+sentence with `{name}` where the name should go, and drag the orange box to
+position/size it. On the user side, picking that template shows a "Your name"
+field; whatever they type fills the `{name}` spot live and is baked into the
+download. Users also now get a template picker to choose between published themes.
+
 ### IMPORTANT — database update for theme shapes + usage counts (v2)
 
 This version lets admins choose each theme's photo shape (circle or square),

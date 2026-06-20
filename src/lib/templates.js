@@ -64,6 +64,7 @@ export async function createTemplate(file, meta = {}) {
     shape: meta.shape || "circle",   // 'circle' | 'square'
     ratio: meta.ratio || "square",   // 'square' | 'portrait'
     slot: meta.slot || null,         // {x,y,w,h} fractions of canvas
+    dyntext: meta.dyntext || null,   // optional dynamic-text config
   };
   const { data, error } = await supabase.from("templates").insert(row).select().single();
   if (error) { console.error(error); return null; }

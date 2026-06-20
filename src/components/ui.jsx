@@ -111,7 +111,7 @@ export function AnalyticsChart() {
   );
 }
 
-export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360, shape = "circle", ratio = "square", slot = null }) {
+export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360, shape = "circle", ratio = "square", slot = null, dyntext = null, name = "" }) {
   // Mirrors composeFramedDP exactly so preview == export.
   const [nat, setNat] = React.useState(null);
   React.useEffect(() => {
@@ -183,6 +183,28 @@ export function FrameCanvas({ photo, x, y, scale, imageUrl, round, size = 360, s
           </text>
         </svg>
       )}
+
+      {/* dynamic text overlay (admin-defined; {name} filled live) */}
+      {dyntext && dyntext.text && (() => {
+        const b = dyntext.box || { x: 0.08, y: 0.7, w: 0.84, h: 0.12 };
+        const filled = dyntext.text.replace(/\{name\}/gi, (name || "").trim());
+        return (
+          <div style={{
+            position: "absolute",
+            left: `${b.x * 100}%`, top: `${b.y * 100}%`,
+            width: `${b.w * 100}%`, height: `${b.h * 100}%`,
+            display: "flex", alignItems: "center",
+            justifyContent: dyntext.align === "left" ? "flex-start" : dyntext.align === "right" ? "flex-end" : "center",
+            textAlign: dyntext.align || "center",
+            fontFamily: "'Bender', sans-serif", fontWeight: 700,
+            fontSize: (dyntext.fontSize || 0.05) * W,
+            lineHeight: 1.15, color: dyntext.color || "#fff",
+            pointerEvents: "none", overflow: "hidden", wordBreak: "break-word",
+          }}>
+            <span style={{ width: "100%" }}>{filled}</span>
+          </div>
+        );
+      })()}
     </div>
   );
 }

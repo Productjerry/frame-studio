@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, Move } from "lucide-react";
-import { BLUE, INK, SLATE, LINE, FONT_BODY } from "./ui.jsx";
+import { BLUE, INK, SLATE, LINE, FONT_BODY, Toggle } from "./ui.jsx";
 
 /* Admin editor shown after picking a frame PNG. Lets the admin choose:
    - shape: circle | square (how the user's photo is masked)
@@ -13,9 +13,17 @@ export default function ThemeEditor({ file, onCancel, onSave }) {
   const [name, setName] = useState(file?.name?.replace(/\.[^.]+$/, "") || "New Theme");
   const [frameUrl, setFrameUrl] = useState(null);
   const [slot, setSlot] = useState({ x: 0.15, y: 0.18, w: 0.7, h: 0.55 });
+  const [dynOn, setDynOn] = useState(false);
+  const [dynText, setDynText] = useState("WE REGRET TO INFORM YOU: PASTOR {name} IS");
+  const [dynBox, setDynBox] = useState({ x: 0.08, y: 0.58, w: 0.84, h: 0.1 });
+  const [dynSize, setDynSize] = useState(0.045);   // fraction of width
+  const [dynColor, setDynColor] = useState("#ffffff");
+  const [dynAlign, setDynAlign] = useState("center");
   const [busy, setBusy] = useState(false);
   const stageRef = useRef(null);
   const drag = useRef(null);
+
+  useEffect(() => { import("../lib/fonts.js").then((m) => m.ensureBender()); }, []);
 
   useEffect(() => {
     if (!file) return;
@@ -30,13 +38,14 @@ export default function ThemeEditor({ file, onCancel, onSave }) {
 
   function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
-  function onPointerDown(e, mode) {
+  // target: 'slot' or 'dyn'
+  function onPointerDown(e, mode, target = "slot") {
     e.preventDefault();
     const rect = stageRef.current.getBoundingClientRect();
     drag.current = {
-      mode,
+      mode, target,
       startX: e.clientX, startY: e.clientY,
-      orig: { ...slot }, rect,
+      orig: { ...(target === "dyn" ? dynBox : slot) }, rect,
     };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -45,16 +54,14 @@ export default function ThemeEditor({ file, onCancel, onSave }) {
     const d = drag.current; if (!d) return;
     const dx = (e.clientX - d.startX) / d.rect.width;
     const dy = (e.clientY - d.startY) / d.rect.height;
+    const setter = d.target === "dyn" ? setDynBox : setSlot;
     if (d.mode === "move") {
-      setSlot({
+      setter({ ...d.orig, x: clamp01(d.orig.x + dx), y: clamp01(d.orig.y + dy) });
+    } else {
+      setter({
         ...d.orig,
-        x: clamp01(d.orig.x + dx), y: clamp01(d.orig.y + dy),
-      });
-    } else { // resize from bottom-right
-      setSlot({
-        ...d.orig,
-        w: Math.max(0.1, Math.min(1 - d.orig.x, d.orig.w + dx)),
-        h: Math.max(0.1, Math.min(1 - d.orig.y, d.orig.h + dy)),
+        w: Math.max(0.08, Math.min(1 - d.orig.x, d.orig.w + dx)),
+        h: Math.max(0.04, Math.min(1 - d.orig.y, d.orig.h + dy)),
       });
     }
   }
@@ -66,7 +73,10 @@ export default function ThemeEditor({ file, onCancel, onSave }) {
 
   async function save() {
     setBusy(true);
-    try { await onSave({ name, shape, ratio, slot }); }
+    const dyntext = dynOn
+      ? { text: dynText, box: dynBox, fontSize: dynSize, color: dynColor, align: dynAlign, font: "Bender" }
+      : null;
+    try { await onSave({ name, shape, ratio, slot, dyntext }); }
     finally { setBusy(false); }
   }
 
@@ -108,6 +118,31 @@ export default function ThemeEditor({ file, onCancel, onSave }) {
               </div>
               {/* frame on top so admin sees how it overlaps */}
               {frameUrl && <img src={frameUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none" }} />}
+
+              {/* dynamic text box (draggable, sits above frame) */}
+              {dynOn && (
+                <div
+                  onPointerDown={(e) => onPointerDown(e, "move", "dyn")}
+                  style={{
+                    position: "absolute",
+                    left: `${dynBox.x * 100}%`, top: `${dynBox.y * 100}%`,
+                    width: `${dynBox.w * 100}%`, height: `${dynBox.h * 100}%`,
+                    border: `2px dashed #f59e0b`, background: "rgba(245,158,11,.12)",
+                    cursor: "move", display: "flex", alignItems: "center",
+                    justifyContent: dynAlign === "left" ? "flex-start" : dynAlign === "right" ? "flex-end" : "center",
+                    overflow: "hidden",
+                  }}>
+                  <span style={{
+                    fontFamily: "'Bender', sans-serif", fontWeight: 700,
+                    fontSize: dynSize * stageW, color: dynColor, lineHeight: 1.1,
+                    textAlign: dynAlign, width: "100%", pointerEvents: "none",
+                  }}>{dynText.replace(/\{name\}/gi, "Nathaniel Bassey")}</span>
+                  <div
+                    onPointerDown={(e) => { e.stopPropagation(); onPointerDown(e, "resize", "dyn"); }}
+                    style={{ position: "absolute", right: -7, bottom: -7, width: 16, height: 16, borderRadius: 4, background: "#fff", border: `2px solid #f59e0b`, cursor: "nwse-resize" }}
+                  />
+                </div>
+              )}
             </div>
             <div style={{ fontSize: 12, color: SLATE, marginTop: 10, lineHeight: 1.5 }}>
               Drag the blue box to where the user's photo should show. Drag the corner to resize.
@@ -131,8 +166,37 @@ export default function ThemeEditor({ file, onCancel, onSave }) {
               <button style={seg(ratio === "portrait")} onClick={() => setRatio("portrait")}>Portrait 1080×1350</button>
             </div>
 
+            <div style={{ borderTop: `1px solid ${LINE}`, margin: "4px 0 18px", paddingTop: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: dynOn ? 14 : 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: SLATE, letterSpacing: ".4px" }}>DYNAMIC NAME TEXT</div>
+                <Toggle on={dynOn} onClick={() => setDynOn(!dynOn)} />
+              </div>
+              {dynOn && (
+                <div>
+                  <textarea value={dynText} onChange={(e) => setDynText(e.target.value)} rows={2}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${LINE}`, fontSize: 13.5, outline: "none", fontFamily: FONT_BODY, resize: "vertical", marginBottom: 6 }} />
+                  <div style={{ fontSize: 11.5, color: SLATE, marginBottom: 14, lineHeight: 1.5 }}>
+                    Use <b>{"{name}"}</b> where the user's name should appear. The orange box on the left is draggable/resizable.
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: SLATE, width: 60 }}>Size</span>
+                    <input type="range" min={0.02} max={0.12} step={0.002} value={dynSize} onChange={(e) => setDynSize(+e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: SLATE, width: 60 }}>Color</span>
+                    <input type="color" value={dynColor} onChange={(e) => setDynColor(e.target.value)} style={{ width: 42, height: 30, border: "none", background: "none", cursor: "pointer" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                    {["left", "center", "right"].map((a) => (
+                      <button key={a} style={seg(dynAlign === a)} onClick={() => setDynAlign(a)}>{a[0].toUpperCase() + a.slice(1)}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={onCancel} style={{ flex: 1, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 11, padding: "12px", fontWeight: 700, fontSize: 14.5, color: "#334155", cursor: "pointer", fontFamily: FONT_BODY }}>Cancel</button>
               <button onClick={save} disabled={busy} style={{ flex: 2, background: BLUE, color: "#fff", border: "none", borderRadius: 11, padding: "12px", fontWeight: 700, fontSize: 14.5, cursor: busy ? "wait" : "pointer", fontFamily: FONT_BODY }}>{busy ? "Saving…" : "Save Theme"}</button>
             </div>
           </div>
